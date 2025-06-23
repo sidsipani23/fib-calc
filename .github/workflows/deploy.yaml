@@ -1,4 +1,4 @@
-name: Deploy MultiDocker
+name: fib-calc
 on:
   push:
     branches:
@@ -9,7 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+      - name: Log in to DockerHub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
       - run: docker build -t sidsipani23/fib-calc-client -f ./client/Dockerfile.dev ./client
       - run: docker run -e CI=true sidsipani23/fib-calc-client npm test
  
