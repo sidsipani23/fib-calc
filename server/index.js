@@ -66,8 +66,13 @@ app.get("/values/all", async (req, res) => {
 });
 
 app.get("/values/current", async (req, res) => {
-  const values = await redisClient.hGetAll("values");
-  res.send(values);
+  try {
+    const values = await redisClient.hGetAll("values");
+    res.send(values);
+  } catch (err) {
+    console.error("Error fetching current values:", err);
+    res.status(500).send("Error fetching current values");
+  }
 });
 
 app.post("/values", async (req, res) => {
