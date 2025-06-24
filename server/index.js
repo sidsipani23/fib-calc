@@ -33,10 +33,14 @@ const redisClient = redis.createClient({
 });
 const redisPublisher = redisClient.duplicate();
  
-(async () => {
+try {
+  (async () => {
   await redisClient.connect();
   await redisPublisher.connect();
-})();
+  })();
+ } catch(err) {
+  console.error("Error connecting to Redis:", err);
+ }
  
 // Express route handlers
  
@@ -70,5 +74,5 @@ app.post("/values", async (req, res) => {
 });
  
 app.listen(5000, (err) => {
-  console.log("Listening");
+  console.log("Listening", keys);
 });
