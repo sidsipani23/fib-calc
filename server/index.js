@@ -51,6 +51,7 @@ try {
 } catch (err) {
   console.error("Error connecting to Redis:", err);
 }
+redisClient.on('error', (err) => console.error('Redis Client Error', err));
 
 // Express route handlers
 
