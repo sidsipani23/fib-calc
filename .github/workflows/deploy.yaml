@@ -1,40 +1,75 @@
-name: fib-calc
+name: Deploy React app to EKS
+
 on:
-  push:
-    branches:
-      - main 
- 
+  workflow_run:
+    workflows: ["Frontend unit tests"]
+    branches: [main]
+    types:
+      - completed
+
+env:
+  AWS_REGION: ap-south-1               
+  EKS_CLUSTER_NAME: fib-calc-k8s  
+  SHA: ${{ github.sha }}
+
 jobs:
-  build:
+  publish-to-hub:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    name: Publish to Docker Hub
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-      - name: Log in to DockerHub
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-      - run: docker build -t sidsipani23/fib-calc-client -f ./client/Dockerfile.dev ./client
-      - run: docker run -e CI=true sidsipani23/fib-calc-client npm test
- 
-      - run: docker build -t sidsipani23/fib-calc-client ./client
-      - run: docker build -t sidsipani23/fib-calc-nginx ./nginx
-      - run: docker build -t sidsipani23/fib-calc-server ./server
-      - run: docker build -t sidsipani23/fib-calc-worker ./worker
- 
-      - run: docker push sidsipani23/fib-calc-client
-      - run: docker push sidsipani23/fib-calc-nginx
-      - run: docker push sidsipani23/fib-calc-server
-      - run: docker push sidsipani23/fib-calc-worker
- 
-      - name: Generate deployment package
-        run: zip -r deploy.zip . -x '*.git*'
- 
-      - name: Deploy to EB
-        uses: einaregilsson/beanstalk-deploy@v18
-        with:
-          aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
-          aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
-          application_name: fib-calc
-          environment_name: fib-calc-env
-          existing_bucket_name: elasticbeanstalk-ap-south-1-826754917540
-          region: ap-south-1
-          version_label: ${{ github.sha }}
-          deployment_package: deploy.zip
+    - uses: actions/checkout@v2
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+    - name: Get the version
+      id: vars
+      run: echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+    - name: Build and push Docker images
+      run: |-
+        docker build -t sidsipani23/fib-calc-client:latest -t sidsipani23/fib-calc-client:${{ steps.vars.outputs.tag }} -f ./client/Dockerfile ./client
+        docker build -t sidsipani23/fib-calc-server:latest -t sidsipani23/fib-calc-server:${{ steps.vars.outputs.tag }} -f ./server/Dockerfile ./server
+        docker build -t sidsipani23/fib-calc-worker:latest -t sidsipani23/fib-calc-worker:${{ steps.vars.outputs.tag }} -f ./worker/Dockerfile ./worker
+        docker push sidsipani23/fib-calc-client:latest
+        docker push sidsipani23/fib-calc-server:latest
+        docker push sidsipani23/fib-calc-worker:latest
+        docker push sidsipani23/fib-calc-client:${{ steps.vars.outputs.tag }}
+        docker push sidsipani23/fib-calc-server:${{ steps.vars.outputs.tag }}
+        docker push sidsipani23/fib-calc-worker:${{ steps.vars.outputs.tag }}
+
+  setup-and-deploy:
+    needs: publish-to-hub
+    name: Setup and Deploy to EKS
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ap-south-1
+
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+
+    - name: Get the version
+      id: vars
+      run: echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+    - name: Deploy to EKS
+      run: |-
+        kubectl apply -f k8s/
+        kubectl set image deployments/server-deployment server=sidsipani23/fib-calc-server:${{ steps.vars.outputs.tag }}
+        kubectl set image deployments/client-deployment client=sidsipani23/fib-calc-client:${{ steps.vars.outputs.tag }}
+        kubectl set image deployments/worker-deployment worker=sidsipani23/fib-calc-worker:${{ steps.vars.outputs.tag }}
+        kubectl get services -o wide
