@@ -4,7 +4,7 @@ import "./App.css";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import OtherPage from "./OtherPage";
 import Fib from "./Fib";
- 
+
 function App() {
   return (
     <Router>
@@ -17,7 +17,7 @@ function App() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            Learn React
+            Learn React with me
           </a>
           <Link to="/">Home</Link>
           <Link to="/otherpage">Other Page</Link>
@@ -30,5 +30,5 @@ function App() {
     </Router>
   );
 }
- 
+
 export default App;
